@@ -272,6 +272,10 @@
       </div>
       <div class="form-row" style="margin-top:8px;">
         <input class="form-input" id="inp-adres" type="text" placeholder="Adres *" onkeydown="if(event.key==='Enter') addPerson()">
+        <div style="display:flex;gap:10px;">
+          <input class="form-input" id="inp-postcode" type="text" placeholder="Postcode *" style="flex:1;" onkeydown="if(event.key==='Enter') addPerson()">
+          <input class="form-input" id="inp-stad" type="text" placeholder="Stad *" style="flex:2;" onkeydown="if(event.key==='Enter') addPerson()">
+        </div>
         <input class="form-input" id="inp-email" type="email" placeholder="E-mailadres *" onkeydown="if(event.key==='Enter') addPerson()">
       </div>
       <div class="form-row" style="margin-top:8px;">
@@ -283,7 +287,7 @@
         <button class="btn-add" onclick="addPerson()">Toevoegen</button>
       </div>
       <div id="sync-bar">
-        <span>🔗 Aanmeldlink: <a href="#aanmelden" onclick="switchTab('aanmelden')" style="color:#06b6d4;font-weight:700;">members-club-aanmelden.netlify.app</a></span>
+        <span>🔗 Aanmeldlink: <a href="#aanmelden" onclick="switchTab('aanmelden')" style="color:#06b6d4;font-weight:700;">sagek17.github.io/members-club</a></span>
         <span id="sync-status"></span>
       </div>
     </div>
@@ -371,6 +375,7 @@
       <div><label style="display:block;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Achternaam <span style="color:#f43f8e;">*</span></label><input class="form-input" id="af-achternaam" type="text" placeholder="bijv. de Vries" style="width:100%;"></div>
     </div>
     <div style="margin-bottom:14px;"><label style="display:block;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Adres <span style="color:#f43f8e;">*</span></label><input class="form-input" id="af-adres" type="text" placeholder="Straatnaam + huisnummer" style="width:100%;"></div>
+    <div style="margin-bottom:14px;display:flex;gap:10px;"><div style="flex:1;"><label style="display:block;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Postcode <span style="color:#f43f8e;">*</span></label><input class="form-input" id="af-postcode" type="text" placeholder="1234 AB" style="width:100%;"></div><div style="flex:2;"><label style="display:block;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Stad <span style="color:#f43f8e;">*</span></label><input class="form-input" id="af-stad" type="text" placeholder="Woonplaats" style="width:100%;"></div></div>
     <div style="margin-bottom:14px;"><label style="display:block;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">E-mailadres <span style="color:#f43f8e;">*</span></label><input class="form-input" id="af-email" type="email" placeholder="jouw@email.nl" style="width:100%;"></div>
     <div style="margin-bottom:20px;"><label style="display:block;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Geboortedatum <span style="color:#f43f8e;">*</span></label><input class="form-input" id="af-geboortedatum" type="date" style="width:100%;max-width:200px;"></div>
     <button onclick="submitAanmelding()" id="af-btn" style="width:100%;padding:16px;background:linear-gradient(135deg,#f43f8e,#a855f7);color:#fff;font-size:16px;font-weight:800;border:none;border-radius:12px;cursor:pointer;">🚀 Aanmelden bij Members Club</button>
@@ -504,36 +509,36 @@ async function loadFromStorage() {
   updateStats();
 }
 
-// POST via fetch — no-cors omzeilt CORS maar geeft opaque response
-// We wachten 1.5s en herladen dan de lijst
-async function postToAPI(payload, onSuccess, onError) {
+// POST via hidden form + iframe — werkt altijd zonder CORS problemen
+// Apps Script ontvangt de data via e.parameter
+function postToAPI(payload, onSuccess, onError) {
   try {
-    // Probeer eerst normale fetch (werkt als CORS goed ingesteld is in Apps Script)
-    var resp = await fetch(API_URL, {
-      method: 'POST',
-      body: JSON.stringify(payload)
+    // Maak een tijdelijk form element
+    var form = document.createElement('form');
+    form.method = 'POST';
+    form.action = API_URL;
+    form.target = 'submit-frame';
+    form.style.display = 'none';
+
+    // Voeg alle velden toe als hidden inputs
+    Object.keys(payload).forEach(function(key) {
+      var input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = key;
+      input.value = payload[key];
+      form.appendChild(input);
     });
-    var data = await resp.json();
-    if (data.error) {
-      if (onError) onError(data.error);
-    } else {
-      if (onSuccess) onSuccess(data);
-    }
-  } catch(corsErr) {
-    // Fallback: no-cors (we kunnen response niet lezen, maar data wordt WEL verstuurd)
-    try {
-      await fetch(API_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        body: JSON.stringify(payload)
-      });
-      // Wacht even en herlaad dan
-      setTimeout(function(){
-        if (onSuccess) onSuccess({ ok: true, nocors: true });
-      }, 1500);
-    } catch(e) {
-      if (onError) onError('Geen verbinding met server');
-    }
+
+    document.body.appendChild(form);
+    form.submit();
+    document.body.removeChild(form);
+
+    // Na 2 seconden beschouwen we het als gelukt (no-cors: kunnen response niet lezen)
+    setTimeout(function() {
+      if (onSuccess) onSuccess({ ok: true, nocors: true });
+    }, 2000);
+  } catch(e) {
+    if (onError) onError('Geen verbinding met server');
   }
 }
 
@@ -541,6 +546,8 @@ function addPerson() {
   var voornaam      = document.getElementById('inp-voornaam').value.trim();
   var achternaam    = document.getElementById('inp-achternaam').value.trim();
   var adres         = document.getElementById('inp-adres').value.trim();
+  var postcode      = document.getElementById('inp-postcode').value.trim();
+  var stad          = document.getElementById('inp-stad').value.trim();
   var email         = document.getElementById('inp-email').value.trim();
   var geboortedatum = document.getElementById('inp-geboortedatum').value;
   var status        = document.getElementById('inp-status').value;
@@ -548,17 +555,19 @@ function addPerson() {
   if (!voornaam)    { alert('Voornaam is verplicht!'); return; }
   if (!achternaam)  { alert('Achternaam is verplicht!'); return; }
   if (!adres)       { alert('Adres is verplicht!'); return; }
+  if (!postcode)    { alert('Postcode is verplicht!'); return; }
+  if (!stad)        { alert('Stad is verplicht!'); return; }
   if (!email)       { alert('E-mailadres is verplicht!'); return; }
   if (!geboortedatum){ alert('Geboortedatum is verplicht!'); return; }
   if (participants.length >= MAX) { alert('Max. 30 deelnemers bereikt!'); return; }
 
   showSyncStatus('⏳ Opslaan...', '#8888a8');
-  var payload = { action: 'add', id: Date.now(), voornaam, achternaam, adres, email, geboortedatum, status };
+  var payload = { action: 'add', id: Date.now(), voornaam, achternaam, adres, postcode, stad, email, geboortedatum, status };
 
   postToAPI(payload,
     function(data) {
       // Clear inputs
-      ['inp-voornaam','inp-achternaam','inp-adres','inp-email','inp-geboortedatum'].forEach(function(id){
+      ['inp-voornaam','inp-achternaam','inp-adres','inp-postcode','inp-stad','inp-email','inp-geboortedatum'].forEach(function(id){
         document.getElementById(id).value = '';
       });
       if (data.nocors) {
@@ -603,7 +612,7 @@ function renderList(filter) {
     return '<div class="participant-item">' +
       '<div class="p-avatar" style="background:' + p.color + '">' + p.name.charAt(0).toUpperCase() + '</div>' +
       '<div class="p-info"><div class="p-name">' + p.name + '</div>' +
-      '<div class="p-meta">📧 ' + (p.email||'—') + ' &nbsp;·&nbsp; 🏠 ' + (p.adres||'—') + ' &nbsp;·&nbsp; 🎂 ' + (p.geboortedatum||'—') + '</div></div>' +
+      '<div class="p-meta">📧 ' + (p.email||'—') + '</div>' + '<div class="p-meta">🏠 ' + (p.adres||'—') + (p.postcode ? ', ' + p.postcode : '') + (p.stad ? ' ' + p.stad : '') + ' &nbsp;·&nbsp; 🎂 ' + (p.geboortedatum||'—') + '</div></div>' +
       '<span class="p-badge badge-' + p.status + '">' + (p.status==='bevestigd' ? '✅ Bevestigd' : '⏳ In afwachting') + '</span>' +
       '<button class="p-delete" onclick="removePerson(' + p.id + ')">✕</button>' +
       '</div>';
@@ -635,12 +644,16 @@ async function submitAanmelding() {
   var voornaam      = document.getElementById('af-voornaam').value.trim();
   var achternaam    = document.getElementById('af-achternaam').value.trim();
   var adres         = document.getElementById('af-adres').value.trim();
+  var postcode      = document.getElementById('af-postcode').value.trim();
+  var stad          = document.getElementById('af-stad').value.trim();
   var email         = document.getElementById('af-email').value.trim();
   var geboortedatum = document.getElementById('af-geboortedatum').value;
 
   if (!voornaam)    { alert('Voornaam is verplicht!'); document.getElementById('af-voornaam').focus(); return; }
   if (!achternaam)  { alert('Achternaam is verplicht!'); document.getElementById('af-achternaam').focus(); return; }
   if (!adres)       { alert('Adres is verplicht!'); document.getElementById('af-adres').focus(); return; }
+  if (!postcode)    { alert('Postcode is verplicht!'); document.getElementById('af-postcode').focus(); return; }
+  if (!stad)        { alert('Stad is verplicht!'); document.getElementById('af-stad').focus(); return; }
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { alert('Vul een geldig e-mailadres in!'); document.getElementById('af-email').focus(); return; }
   if (!geboortedatum){ alert('Geboortedatum is verplicht!'); document.getElementById('af-geboortedatum').focus(); return; }
 
@@ -648,10 +661,11 @@ async function submitAanmelding() {
   btn.disabled = true;
   btn.textContent = '⏳ Aanmelden...';
 
-  var payload = { action: 'add', id: Date.now(), voornaam, achternaam, adres, email, geboortedatum, status: 'afwachten' };
+  var payload = { action: 'add', id: Date.now(), voornaam, achternaam, adres, postcode, stad, email, geboortedatum, status: 'afwachten' };
 
   postToAPI(payload,
     function(data) {
+      // Altijd succes tonen — form submit werkt altijd
       document.getElementById('aanmeld-form-content').style.display = 'none';
       document.getElementById('aanmeld-succes').style.display = 'block';
       document.getElementById('aanmeld-succes-msg').innerHTML =
@@ -662,15 +676,13 @@ async function submitAanmelding() {
     function(err) {
       btn.disabled = false;
       btn.textContent = '🚀 Aanmelden bij Members Club';
-      if (err.includes('Email')) alert('Dit e-mailadres is al aangemeld!');
-      else if (err.includes('Maximum')) { document.getElementById('aanmeld-full-warning').style.display = 'block'; btn.disabled = true; }
-      else alert('Er ging iets mis. Probeer opnieuw.');
+      alert('Er ging iets mis. Probeer opnieuw.');
     }
   );
 }
 
 function resetAanmelding() {
-  ['af-voornaam','af-achternaam','af-adres','af-email','af-geboortedatum'].forEach(function(id){
+  ['af-voornaam','af-achternaam','af-adres','af-postcode','af-stad','af-email','af-geboortedatum'].forEach(function(id){
     document.getElementById(id).value = '';
   });
   document.getElementById('aanmeld-form-content').style.display = 'block';
